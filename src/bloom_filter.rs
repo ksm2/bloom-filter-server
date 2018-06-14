@@ -27,6 +27,11 @@ impl BloomFilter {
         let hashes = hash(element);
         hashes.iter().all(|hash| self.bv.get(*hash).unwrap())
     }
+
+    /// Returns a byte vector of the bits
+    pub fn to_bytes(&self) -> Vec<u8> {
+        self.bv.to_bytes()
+    }
 }
 
 /// Hashes the given element string

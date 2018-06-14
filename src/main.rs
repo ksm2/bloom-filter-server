@@ -14,7 +14,7 @@ use std::time::Duration;
 mod bloom_filter;
 
 fn main() {
-    let (parent_tx, rx) = channel::<(String, Sender<&[u8]>)>();
+    let (parent_tx, rx) = channel::<(String, Sender<Vec<u8>>)>();
 
     let host = "0.0.0.0";
     let port = 1337;
@@ -45,7 +45,7 @@ fn main() {
 }
 
 /// Handles TCP streams from clients
-fn handle_client(id: i32, parent_tx: Sender<(String, Sender<&'static [u8]>)>, mut stream: TcpStream) -> () {
+fn handle_client(id: i32, parent_tx: Sender<(String, Sender<Vec<u8>>)>, mut stream: TcpStream) -> () {
     println!("Connected to client #{}", id);
 
     loop {
@@ -60,10 +60,10 @@ fn handle_client(id: i32, parent_tx: Sender<(String, Sender<&'static [u8]>)>, mu
             break
         }
 
-        let (child_tx, parent_rx) = channel::<&[u8]>();
+        let (child_tx, parent_rx) = channel::<Vec<u8>>();
         parent_tx.send((input, child_tx)).unwrap();
         let to_send = parent_rx.recv().unwrap();
-        stream.write(to_send).unwrap();
+        stream.write(to_send.as_slice()).unwrap();
 
         thread::sleep(Duration::from_millis(1))
     }
@@ -72,7 +72,7 @@ fn handle_client(id: i32, parent_tx: Sender<(String, Sender<&'static [u8]>)>, mu
 }
 
 /// Handles messages from incoming clients and holds the Bloom filter
-fn handle_server(rx: Receiver<(String, Sender<&'static [u8]>)>) {
+fn handle_server(rx: Receiver<(String, Sender<Vec<u8>>)>) {
     let mut bf = BloomFilter::new();
 
     for (mut message, tx) in rx.iter() {
@@ -85,21 +85,25 @@ fn handle_server(rx: Receiver<(String, Sender<&'static [u8]>)>) {
                     bf.add(token);
                     println!("Added '{}'", token);
                 }
-                tx.send(b"OK.\n").unwrap();
+                tx.send(b"OK.\n".to_vec()).unwrap();
             }
             "HAS" => {
                 let token = parts.next().unwrap();
                 let is_contained = bf.has(token);
                 println!("Check if '{}' is contained: {}", token, is_contained);
                 if is_contained {
-                    tx.send(b"Yes.\n").unwrap();
+                    tx.send(b"Yes.\n".to_vec()).unwrap();
                 } else {
-                    tx.send(b"No.\n").unwrap();
+                    tx.send(b"No.\n".to_vec()).unwrap();
                 };
+            }
+            "BITS" => {
+                let bytes = bf.to_bytes();
+                tx.send(bytes).unwrap();
             }
             _ => {
                 println!("Error: {}", message);
-                tx.send(b"ERROR.\n").unwrap();
+                tx.send(b"ERROR.\n".to_vec()).unwrap();
             }
         }
     }

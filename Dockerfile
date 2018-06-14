@@ -1,6 +1,6 @@
-FROM ubuntu:latest
+FROM alpine:latest
 
-COPY target/release/bloom_filter_server /srv/bloom_filter_server
+COPY target/x86_64-unknown-linux-musl/release/bloom_filter_server /bin/bfserver
 
 EXPOSE 1337
-CMD /srv/bloom_filter_server
+CMD ["bfserver"]

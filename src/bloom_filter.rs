@@ -1,5 +1,6 @@
 use murmur3::murmur3_32;
 use bit_vec::BitVec;
+use rayon::prelude::*;
 
 // Number of hashes
 const K: usize = 3;
@@ -21,12 +22,15 @@ impl BloomFilter {
         }
     }
 
-    /// Adds a new element to the Bloom filter.
-    pub fn add(&mut self, element: &str) {
-        let hashes = hash(element);
-        for hash in hashes.iter() {
-            self.bv.set(*hash, true);
-            self.cv[*hash] += 1
+    /// Adds many new elements to the Bloom filter.
+    pub fn add(&mut self, elements: Vec<&str>) -> () {
+        let hashes = elements.par_iter()
+            .flat_map(|element| hash_vec(element))
+            .collect::<Vec<usize>>();
+
+        for hash in hashes {
+            self.bv.set(hash, true);
+            self.cv[hash] += 1
         }
     }
 
@@ -54,13 +58,13 @@ impl BloomFilter {
     /// Checks, whether the given element is contained in the Bloom filter.
     pub fn has(&self, element: &str) -> bool {
         let hashes = hash(element);
-        hashes.iter().all(|hash| self.bv.get(*hash).unwrap())
+        hashes.par_iter().all(|hash| self.bv.get(*hash).unwrap())
     }
 
     /// Counts the occurrence of an element within a Bloom filter.
     pub fn count(&self, element: &str) -> u32 {
         let hashes = hash(element);
-        hashes.iter().map(|hash| self.cv[*hash]).min().unwrap()
+        hashes.par_iter().map(|hash| self.cv[*hash]).min().unwrap()
     }
 
     /// Returns a byte vector of the bits.
@@ -78,4 +82,13 @@ fn hash(element: &str) -> [usize; K] {
         hashes[k] = (hash1 + k * hash2) % M;
     }
     hashes
+}
+
+/// Hashes the given element string
+fn hash_vec(element: &str) -> Vec<usize> {
+    let hash1 = murmur3_32(&mut element.as_bytes(), 0) as usize;
+    let hash2 = murmur3_32(&mut element.as_bytes(), hash1 as u32) as usize;
+    (0..K).into_par_iter()
+        .map(|k| (hash1 + k * hash2) % M)
+        .collect::<Vec<usize>>()
 }

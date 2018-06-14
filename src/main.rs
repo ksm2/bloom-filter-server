@@ -1,4 +1,5 @@
 // Define dependencies
+extern crate rayon;
 extern crate bit_vec;
 extern crate murmur3;
 
@@ -81,10 +82,8 @@ fn handle_server(rx: Receiver<(String, Sender<Vec<u8>>)>) {
         let method = parts.next().unwrap();
         match method.to_uppercase().as_str() {
             "ADD" => {
-                for token in parts {
-                    bf.add(token);
-                    println!("Added '{}'", token);
-                }
+                let tokens = parts.collect::<Vec<&str>>();
+                bf.add(tokens);
                 tx.send(b"OK.\n".to_vec()).unwrap();
             }
             "RM" => {

@@ -6,3 +6,4 @@ authors = ["Konstantin Simon Maria Möllers <ksm.moellers@gmail.com>"]
 [dependencies]
 murmur3 = "0.4.1"
 bit-vec = "0.5.0"
+rayon = "1.0.1"

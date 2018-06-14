@@ -74,7 +74,7 @@ impl BloomFilter {
 }
 
 /// Hashes the given element string
-fn hash(element: &str) -> [usize; K] {
+pub fn hash(element: &str) -> [usize; K] {
     let hash1 = murmur3_32(&mut element.as_bytes(), 0) as usize;
     let hash2 = murmur3_32(&mut element.as_bytes(), hash1 as u32) as usize;
     let mut hashes = [0usize; K];
@@ -85,10 +85,6 @@ fn hash(element: &str) -> [usize; K] {
 }
 
 /// Hashes the given element string
-fn hash_vec(element: &str) -> Vec<usize> {
-    let hash1 = murmur3_32(&mut element.as_bytes(), 0) as usize;
-    let hash2 = murmur3_32(&mut element.as_bytes(), hash1 as u32) as usize;
-    (0..K).into_par_iter()
-        .map(|k| (hash1 + k * hash2) % M)
-        .collect::<Vec<usize>>()
+pub fn hash_vec(element: &str) -> Vec<usize> {
+    hash(element).to_vec()
 }

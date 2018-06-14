@@ -1,7 +1,10 @@
+#![feature(test)]
+
 // Define dependencies
 extern crate rayon;
 extern crate bit_vec;
 extern crate murmur3;
+extern crate test;
 
 // Main
 use bloom_filter::BloomFilter;
@@ -13,6 +16,7 @@ use std::time::Duration;
 
 // Define Modules
 mod bloom_filter;
+mod tests;
 
 fn main() {
     let (parent_tx, rx) = channel::<(String, Sender<Vec<u8>>)>();

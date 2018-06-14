@@ -87,6 +87,13 @@ fn handle_server(rx: Receiver<(String, Sender<Vec<u8>>)>) {
                 }
                 tx.send(b"OK.\n".to_vec()).unwrap();
             }
+            "RM" => {
+                for token in parts {
+                    bf.remove(token);
+                    println!("Removed '{}'", token);
+                }
+                tx.send(b"OK.\n".to_vec()).unwrap();
+            }
             "HAS" => {
                 let token = parts.next().unwrap();
                 let is_contained = bf.has(token);
@@ -96,6 +103,11 @@ fn handle_server(rx: Receiver<(String, Sender<Vec<u8>>)>) {
                 } else {
                     tx.send(b"No.\n".to_vec()).unwrap();
                 };
+            }
+            "COUNT" => {
+                let token = parts.next().unwrap();
+                let count = bf.count(token);
+                tx.send(format!("{}.\n", count).into_bytes()).unwrap();
             }
             "BITS" => {
                 let bytes = bf.to_bytes();

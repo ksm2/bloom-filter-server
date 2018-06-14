@@ -8,27 +8,62 @@ const K: usize = 3;
 const M: usize = 256;
 
 pub struct BloomFilter {
-    bv: BitVec
+    bv: BitVec,
+    cv: [u32; M],
 }
 
 impl BloomFilter {
+    /// Creates a new Bloom filter.
     pub fn new() -> BloomFilter {
-        BloomFilter { bv: BitVec::from_elem(M, false) }
+        BloomFilter {
+            bv: BitVec::from_elem(M, false),
+            cv: [0; M],
+        }
     }
 
+    /// Adds a new element to the Bloom filter.
     pub fn add(&mut self, element: &str) {
         let hashes = hash(element);
         for hash in hashes.iter() {
             self.bv.set(*hash, true);
+            self.cv[*hash] += 1
         }
     }
 
+    /// Removes an element from the Bloom filter.
+    ///
+    /// Returns `true`, if element is not contained afterwards.
+    pub fn remove(&mut self, element: &str) -> bool {
+        if !self.has(element) {
+            return true
+        }
+
+        let mut result = false;
+        let hashes = hash(element);
+        for hash in hashes.iter() {
+            self.cv[*hash] -= 1;
+            if self.cv[*hash] == 0 {
+                result = true;
+                self.bv.set(*hash, false);
+            }
+        }
+
+        result
+    }
+
+    /// Checks, whether the given element is contained in the Bloom filter.
     pub fn has(&self, element: &str) -> bool {
         let hashes = hash(element);
         hashes.iter().all(|hash| self.bv.get(*hash).unwrap())
     }
 
-    /// Returns a byte vector of the bits
+    /// Counts the occurrence of an element within a Bloom filter.
+    pub fn count(&self, element: &str) -> u32 {
+        let hashes = hash(element);
+        hashes.iter().map(|hash| self.cv[*hash]).min().unwrap()
+    }
+
+    /// Returns a byte vector of the bits.
     pub fn to_bytes(&self) -> Vec<u8> {
         self.bv.to_bytes()
     }

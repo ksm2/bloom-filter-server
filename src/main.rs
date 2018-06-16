@@ -1,4 +1,5 @@
 #![feature(test)]
+#![feature(try_trait)]
 
 // Define dependencies
 extern crate rayon;
@@ -76,49 +77,54 @@ fn handle_server(rx: Receiver<([u8; 4096], Sender<Vec<u8>>)>) {
     let mut bf = BloomFilter::new();
 
     for (mut message, tx) in rx.iter() {
-        if let Some(command) = message.get(0..3) {
-            let string = String::from_utf8_lossy(message.get(4..).unwrap()).trim_right().to_string();
-            let mut parts = string.split_whitespace();
+        match handle_message(&mut bf, message) {
+            Ok(to_send) => tx.send(to_send).unwrap(),
+            Err(_) => tx.send(b"ERROR. Unkown error.".to_vec()).unwrap(),
+        }
+    }
+}
 
-            match command {
-                b"ADD" | b"add" => {
-                    let tokens = parts.collect::<Vec<&str>>();
-                    bf.add(tokens);
-                    tx.send(b"OK.\n".to_vec()).unwrap();
-                }
-                b"RMV" | b"rmv" => {
-                    for token in parts {
-                        bf.remove(token);
-                        println!("Removed '{}'", token);
-                    }
-                    tx.send(b"OK.\n".to_vec()).unwrap();
-                }
-                b"HAS" | b"has" => {
-                    let token = parts.next().unwrap();
-                    let is_contained = bf.has(token);
-                    println!("Check if '{}' is contained: {}", token, is_contained);
-                    if is_contained {
-                        tx.send(b"Yes.\n".to_vec()).unwrap();
-                    } else {
-                        tx.send(b"No.\n".to_vec()).unwrap();
-                    };
-                }
-                b"CNT" | b"cnt" => {
-                    let token = parts.next().unwrap();
-                    let count = bf.count(token);
-                    tx.send(format!("{}.\n", count).into_bytes()).unwrap();
-                }
-                b"BIN" | b"bin" => {
-                    let bytes = bf.to_bytes();
-                    tx.send(bytes).unwrap();
-                }
-                _ => {
-                    println!("Error with incoming message.");
-                    tx.send(format!("ERROR. Invalid command {}.\n", String::from_utf8_lossy(command)).as_bytes().to_vec()).unwrap();
-                }
+/// Handles an incoming message.
+fn handle_message(bf: &mut BloomFilter, message: [u8; 4096]) -> Result<Vec<u8>, std::option::NoneError> {
+    let command = message.get(0..3)?;
+    let rest = message.get(4..)?;
+    let string = String::from_utf8_lossy(rest).trim_right().to_string();
+    let mut parts = string.split_whitespace();
+
+    match command {
+        b"ADD" | b"add" => {
+            let tokens = parts.collect::<Vec<&str>>();
+            bf.add(tokens);
+            Ok(b"OK.\n".to_vec())
+        }
+        b"RMV" | b"rmv" => {
+            for token in parts {
+                bf.remove(token);
+                println!("Removed '{}'", token);
             }
-        } else {
-            tx.send(b"ERROR. Sent not enough bytes.\n".to_vec()).unwrap();
+            Ok(b"OK.\n".to_vec())
+        }
+        b"HAS" | b"has" => {
+            let token = parts.next()?;
+            let is_contained = bf.has(token);
+            println!("Check if '{}' is contained: {}", token, is_contained);
+            if is_contained {
+                Ok(b"Yes.\n".to_vec())
+            } else {
+                Ok(b"No.\n".to_vec())
+            }
+        }
+        b"CNT" | b"cnt" => {
+            let token = parts.next()?;
+            let count = bf.count(token);
+            Ok(format!("{}.\n", count).into_bytes())
+        }
+        b"BIN" | b"bin" => {
+            Ok(bf.to_bytes())
+        }
+        _ => {
+            println!("Error with incoming message.");
+            Ok(format!("ERROR. Invalid command {}.\n", String::from_utf8_lossy(command).trim_right()).as_bytes().to_vec())
         }
     }
 }

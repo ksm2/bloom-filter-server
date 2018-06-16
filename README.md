@@ -37,7 +37,7 @@ Commands
   
   The server returns `OK.` on success.
 
-* **`RM`** `<item1>` `[<item2>]` `[<item3>]` `[...]`
+* **`RMV`** `<item1>` `[<item2>]` `[<item3>]` `[...]`
 
   Removes _item1_ ... from the Bloom filter.
   
@@ -49,13 +49,13 @@ Commands
 
   The server returns `Yes.` if so, or `No.` otherwise.
 
-* **`COUNT`** `<item>`
+* **`CNT`** `<item>`
 
   Counts how often _item_ is contained in the Bloom filter.
 
   The server returns `<count>.`, with _count_ being the count.
 
-* **`BITS`**
+* **`BIN`**
 
   Returns the binary Bloom filter bits.
 

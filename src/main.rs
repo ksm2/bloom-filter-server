@@ -19,7 +19,7 @@ mod bloom_filter;
 mod tests;
 
 fn main() {
-    let (parent_tx, rx) = channel::<(String, Sender<Vec<u8>>)>();
+    let (parent_tx, rx) = channel::<([u8; 4096], Sender<Vec<u8>>)>();
 
     let host = "0.0.0.0";
     let port = 1337;
@@ -50,7 +50,7 @@ fn main() {
 }
 
 /// Handles TCP streams from clients
-fn handle_client(id: i32, parent_tx: Sender<(String, Sender<Vec<u8>>)>, mut stream: TcpStream) -> () {
+fn handle_client(id: i32, parent_tx: Sender<([u8; 4096], Sender<Vec<u8>>)>, mut stream: TcpStream) -> () {
     println!("Connected to client #{}", id);
 
     loop {
@@ -60,13 +60,8 @@ fn handle_client(id: i32, parent_tx: Sender<(String, Sender<Vec<u8>>)>, mut stre
             break
         }
 
-        let input = String::from_utf8_lossy(&buf).trim_right().to_string();
-        if input.len() == 0 {
-            break
-        }
-
         let (child_tx, parent_rx) = channel::<Vec<u8>>();
-        parent_tx.send((input, child_tx)).unwrap();
+        parent_tx.send((buf, child_tx)).unwrap();
         let to_send = parent_rx.recv().unwrap();
         stream.write(to_send.as_slice()).unwrap();
 
@@ -77,49 +72,53 @@ fn handle_client(id: i32, parent_tx: Sender<(String, Sender<Vec<u8>>)>, mut stre
 }
 
 /// Handles messages from incoming clients and holds the Bloom filter
-fn handle_server(rx: Receiver<(String, Sender<Vec<u8>>)>) {
+fn handle_server(rx: Receiver<([u8; 4096], Sender<Vec<u8>>)>) {
     let mut bf = BloomFilter::new();
 
     for (mut message, tx) in rx.iter() {
-        let mut parts = message.split_whitespace();
+        if let Some(command) = message.get(0..3) {
+            let string = String::from_utf8_lossy(message.get(4..).unwrap()).trim_right().to_string();
+            let mut parts = string.split_whitespace();
 
-        let method = parts.next().unwrap();
-        match method.to_uppercase().as_str() {
-            "ADD" => {
-                let tokens = parts.collect::<Vec<&str>>();
-                bf.add(tokens);
-                tx.send(b"OK.\n".to_vec()).unwrap();
-            }
-            "RM" => {
-                for token in parts {
-                    bf.remove(token);
-                    println!("Removed '{}'", token);
+            match command {
+                b"ADD" | b"add" => {
+                    let tokens = parts.collect::<Vec<&str>>();
+                    bf.add(tokens);
+                    tx.send(b"OK.\n".to_vec()).unwrap();
                 }
-                tx.send(b"OK.\n".to_vec()).unwrap();
+                b"RMV" | b"rmv" => {
+                    for token in parts {
+                        bf.remove(token);
+                        println!("Removed '{}'", token);
+                    }
+                    tx.send(b"OK.\n".to_vec()).unwrap();
+                }
+                b"HAS" | b"has" => {
+                    let token = parts.next().unwrap();
+                    let is_contained = bf.has(token);
+                    println!("Check if '{}' is contained: {}", token, is_contained);
+                    if is_contained {
+                        tx.send(b"Yes.\n".to_vec()).unwrap();
+                    } else {
+                        tx.send(b"No.\n".to_vec()).unwrap();
+                    };
+                }
+                b"CNT" | b"cnt" => {
+                    let token = parts.next().unwrap();
+                    let count = bf.count(token);
+                    tx.send(format!("{}.\n", count).into_bytes()).unwrap();
+                }
+                b"BIN" | b"bin" => {
+                    let bytes = bf.to_bytes();
+                    tx.send(bytes).unwrap();
+                }
+                _ => {
+                    println!("Error with incoming message.");
+                    tx.send(format!("ERROR. Invalid command {}.\n", String::from_utf8_lossy(command)).as_bytes().to_vec()).unwrap();
+                }
             }
-            "HAS" => {
-                let token = parts.next().unwrap();
-                let is_contained = bf.has(token);
-                println!("Check if '{}' is contained: {}", token, is_contained);
-                if is_contained {
-                    tx.send(b"Yes.\n".to_vec()).unwrap();
-                } else {
-                    tx.send(b"No.\n".to_vec()).unwrap();
-                };
-            }
-            "COUNT" => {
-                let token = parts.next().unwrap();
-                let count = bf.count(token);
-                tx.send(format!("{}.\n", count).into_bytes()).unwrap();
-            }
-            "BITS" => {
-                let bytes = bf.to_bytes();
-                tx.send(bytes).unwrap();
-            }
-            _ => {
-                println!("Error: {}", message);
-                tx.send(b"ERROR.\n".to_vec()).unwrap();
-            }
+        } else {
+            tx.send(b"ERROR. Sent not enough bytes.\n".to_vec()).unwrap();
         }
     }
 }

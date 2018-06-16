@@ -24,9 +24,7 @@ impl BloomFilter {
 
     /// Adds many new elements to the Bloom filter.
     pub fn add(&mut self, elements: Vec<&str>) -> () {
-        let hashes = elements.par_iter()
-            .flat_map(|element| hash_vec(element))
-            .collect::<Vec<usize>>();
+        let hashes = hash_many(elements);
 
         for hash in hashes {
             self.bv.set(hash, true);
@@ -75,8 +73,9 @@ impl BloomFilter {
 
 /// Hashes the given element string
 pub fn hash(element: &str) -> [usize; K] {
-    let hash1 = murmur3_32(&mut element.as_bytes(), 0) as usize;
-    let hash2 = murmur3_32(&mut element.as_bytes(), hash1 as u32) as usize;
+    let mut x = element.as_bytes();
+    let hash1 = murmur3_32(&mut x, 0) as usize;
+    let hash2 = murmur3_32(&mut x, hash1 as u32) as usize;
     let mut hashes = [0usize; K];
     for k in 0..K {
         hashes[k] = (hash1 + k * hash2) % M;
@@ -85,6 +84,26 @@ pub fn hash(element: &str) -> [usize; K] {
 }
 
 /// Hashes the given element string
+#[cfg(test)]
 pub fn hash_vec(element: &str) -> Vec<usize> {
     hash(element).to_vec()
+}
+
+pub fn make_hash_vec(hash1: usize, hash2: usize) -> Vec<usize> {
+    let mut hashes = [0usize; K];
+    for k in 0..K {
+        hashes[k] = (hash1 + k * hash2) % M;
+    }
+    hashes.to_vec()
+}
+
+/// Hashes the given elements strings
+pub fn hash_many(elements: Vec<&str>) -> Vec<usize> {
+    elements.par_iter()
+        .flat_map(|e| {
+            let mut b = e.as_bytes();
+            let h1 = murmur3_32(&mut b, 0);
+            make_hash_vec(h1 as usize, murmur3_32(&mut b, h1) as usize)
+        })
+        .collect::<Vec<usize>>()
 }

@@ -14,6 +14,7 @@ use std::net::{TcpListener, TcpStream};
 use std::sync::mpsc::{channel, Sender, Receiver};
 use std::thread;
 use std::time::Duration;
+use std::option::NoneError;
 
 // Define Modules
 mod bloom_filter;
@@ -55,7 +56,7 @@ fn handle_client(id: i32, parent_tx: Sender<([u8; 4096], Sender<Vec<u8>>)>, mut 
     println!("Connected to client #{}", id);
 
     loop {
-        let mut buf = [32u8; 4096];
+        let mut buf = [0u8; 4096];
         let bytes_read = stream.read(&mut buf).unwrap();
         if bytes_read == 0 {
             break
@@ -84,30 +85,69 @@ fn handle_server(rx: Receiver<([u8; 4096], Sender<Vec<u8>>)>) {
     }
 }
 
+trait IsWhitespace {
+    fn is_whitespace(&self) -> bool;
+}
+
+impl IsWhitespace for u8 {
+    fn is_whitespace(&self) -> bool {
+        *self == b'\t' || *self == b' ' || *self == 13 || *self == 10
+    }
+}
+
+
+trait SplitWhitespace {
+    fn split_whitespace(&self) -> Result<Vec<&[u8]>, std::option::NoneError>;
+}
+
+impl SplitWhitespace for [u8] {
+    /// Splits the byte array into chunks on whitespace.
+    fn split_whitespace(&self) -> Result<Vec<&[u8]>, std::option::NoneError> {
+        let mut start = 0;
+        let mut vec = Vec::new();
+        let mut i = 0;
+        while i < self.len() {
+            if self[i] == 0 {
+                return Ok(vec);
+            }
+
+            if self[i].is_whitespace() {
+                vec.push(self.get(start..i)?);
+                i += 1;
+                while i < self.len() - 1 && self[i + 1].is_whitespace() {
+                    i += 1;
+                }
+                start = i;
+            }
+
+            i += 1;
+        }
+        Ok(vec)
+    }
+}
+
 /// Handles an incoming message.
-fn handle_message(bf: &mut BloomFilter, message: [u8; 4096]) -> Result<Vec<u8>, std::option::NoneError> {
-    let command = message.get(0..3)?;
-    let rest = message.get(4..)?;
-    let string = String::from_utf8_lossy(rest).trim_right().to_string();
-    let mut parts = string.split_whitespace();
+fn handle_message(bf: &mut BloomFilter, message: [u8; 4096]) -> Result<Vec<u8>, NoneError> {
+    let command: &[u8] = message.get(0..3)?;
+    let rest: &[u8] = message.get(4..)?;
+    let tokens = rest.split_whitespace()?;
 
     match command {
         b"ADD" | b"add" => {
-            let tokens = parts.collect::<Vec<&str>>();
             bf.add(tokens);
             Ok(b"OK.\n".to_vec())
         }
         b"RMV" | b"rmv" => {
-            for token in parts {
+            for token in tokens {
                 bf.remove(token);
-                println!("Removed '{}'", token);
+                println!("Removed '{}'", String::from_utf8_lossy(token).to_string());
             }
             Ok(b"OK.\n".to_vec())
         }
         b"HAS" | b"has" => {
-            let token = parts.next()?;
+            let token = tokens.iter().next()?;
             let is_contained = bf.has(token);
-            println!("Check if '{}' is contained: {}", token, is_contained);
+            println!("Check if '{}' is contained: {}", String::from_utf8_lossy(token).to_string(), is_contained);
             if is_contained {
                 Ok(b"Yes.\n".to_vec())
             } else {
@@ -115,7 +155,7 @@ fn handle_message(bf: &mut BloomFilter, message: [u8; 4096]) -> Result<Vec<u8>, 
             }
         }
         b"CNT" | b"cnt" => {
-            let token = parts.next()?;
+            let token = tokens.iter().next()?;
             let count = bf.count(token);
             Ok(format!("{}.\n", count).into_bytes())
         }

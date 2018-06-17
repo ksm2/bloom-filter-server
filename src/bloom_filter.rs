@@ -23,7 +23,7 @@ impl BloomFilter {
     }
 
     /// Adds many new elements to the Bloom filter.
-    pub fn add(&mut self, elements: Vec<&str>) -> () {
+    pub fn add(&mut self, elements: Vec<&[u8]>) -> () {
         let hashes = hash_many(elements);
 
         for hash in hashes {
@@ -35,13 +35,13 @@ impl BloomFilter {
     /// Removes an element from the Bloom filter.
     ///
     /// Returns `true`, if element is not contained afterwards.
-    pub fn remove(&mut self, element: &str) -> bool {
+    pub fn remove(&mut self, element: &[u8]) -> bool {
         if !self.has(element) {
             return true
         }
 
         let mut result = false;
-        let hashes = hash(element);
+        let hashes = hash(&element);
         for hash in hashes.iter() {
             self.cv[*hash] -= 1;
             if self.cv[*hash] == 0 {
@@ -54,14 +54,14 @@ impl BloomFilter {
     }
 
     /// Checks, whether the given element is contained in the Bloom filter.
-    pub fn has(&self, element: &str) -> bool {
-        let hashes = hash(element);
+    pub fn has(&self, element: &[u8]) -> bool {
+        let hashes = hash(&element);
         hashes.par_iter().all(|hash| self.bv.get(*hash).unwrap())
     }
 
     /// Counts the occurrence of an element within a Bloom filter.
-    pub fn count(&self, element: &str) -> u32 {
-        let hashes = hash(element);
+    pub fn count(&self, element: &[u8]) -> u32 {
+        let hashes = hash(&element);
         hashes.par_iter().map(|hash| self.cv[*hash]).min().unwrap()
     }
 
@@ -72,10 +72,10 @@ impl BloomFilter {
 }
 
 /// Hashes the given element string
-pub fn hash(element: &str) -> [usize; K] {
-    let mut x = element.as_bytes();
-    let hash1 = murmur3_32(&mut x, 0) as usize;
-    let hash2 = murmur3_32(&mut x, hash1 as u32) as usize;
+pub fn hash(element: &&[u8]) -> [usize; K] {
+    let mut b = *element;
+    let hash1 = murmur3_32(&mut b, 0) as usize;
+    let hash2 = murmur3_32(&mut b, hash1 as u32) as usize;
     let mut hashes = [0usize; K];
     for k in 0..K {
         hashes[k] = (hash1 + k * hash2) % M;
@@ -85,8 +85,8 @@ pub fn hash(element: &str) -> [usize; K] {
 
 /// Hashes the given element string
 #[cfg(test)]
-pub fn hash_vec(element: &str) -> Vec<usize> {
-    hash(element).to_vec()
+pub fn hash_vec(element: &[u8]) -> Vec<usize> {
+    hash(&element).to_vec()
 }
 
 pub fn make_hash_vec(hash1: usize, hash2: usize) -> Vec<usize> {
@@ -98,10 +98,10 @@ pub fn make_hash_vec(hash1: usize, hash2: usize) -> Vec<usize> {
 }
 
 /// Hashes the given elements strings
-pub fn hash_many(elements: Vec<&str>) -> Vec<usize> {
+pub fn hash_many(elements: Vec<&[u8]>) -> Vec<usize> {
     elements.par_iter()
-        .flat_map(|e| {
-            let mut b = e.as_bytes();
+        .flat_map(|e: &&[u8]| {
+            let mut b = *e;
             let h1 = murmur3_32(&mut b, 0);
             make_hash_vec(h1 as usize, murmur3_32(&mut b, h1) as usize)
         })

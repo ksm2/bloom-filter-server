@@ -7,7 +7,7 @@ mod tests {
     fn bench_add(bencher: &mut Bencher) -> () {
         let mut bf = BloomFilter::new();
         bencher.iter(move || {
-            let adders = vec!("felix", "markus", "isabel", "jonathan", "denis");
+            let adders: Vec<&[u8]> = vec!(b"felix", b"markus", b"isabel", b"jonathan", b"denis");
             bf.add(adders);
         });
     }
@@ -15,29 +15,29 @@ mod tests {
     #[bench]
     fn bench_hash(bencher: &mut Bencher) -> () {
         bencher.iter(|| {
-            hash("felix");
-            hash("markus");
-            hash("isabel");
-            hash("jonathan");
-            hash("denis");
+            hash(&b"felix".as_ref());
+            hash(&b"markus".as_ref());
+            hash(&b"isabel".as_ref());
+            hash(&b"jonathan".as_ref());
+            hash(&b"denis".as_ref());
         })
     }
 
     #[bench]
     fn bench_hash_vec(bencher: &mut Bencher) -> () {
         bencher.iter(|| {
-            hash_vec("felix");
-            hash_vec("markus");
-            hash_vec("isabel");
-            hash_vec("jonathan");
-            hash_vec("denis");
+            hash_vec(b"felix");
+            hash_vec(b"markus");
+            hash_vec(b"isabel");
+            hash_vec(b"jonathan");
+            hash_vec(b"denis");
         })
     }
 
     #[bench]
     fn bench_hash_many(bencher: &mut Bencher) -> () {
         bencher.iter(|| {
-            hash_many(vec!("felix", "markus", "isabel", "jonathan", "denis"));
+            hash_many(vec!(b"felix", b"markus", b"isabel", b"jonathan", b"denis"));
         })
     }
 }

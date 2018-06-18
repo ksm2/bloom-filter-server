@@ -35,6 +35,13 @@ mod tests {
     }
 
     #[bench]
+    fn bench_murmur32(bencher: &mut Bencher) {
+        bencher.iter(|| {
+            hash_vec(b"markus");
+        })
+    }
+
+    #[bench]
     fn bench_hash_many(bencher: &mut Bencher) -> () {
         bencher.iter(|| {
             hash_many(vec!(b"felix", b"markus", b"isabel", b"jonathan", b"denis"));

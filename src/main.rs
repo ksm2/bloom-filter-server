@@ -58,7 +58,7 @@ fn handle_client(id: i32, parent_tx: Sender<([u8; 4096], Sender<Vec<u8>>)>, mut 
     loop {
         let mut buf = [0u8; 4096];
         let bytes_read = stream.read(&mut buf).unwrap();
-        if bytes_read == 0 {
+        if bytes_read < 3 {
             break
         }
 

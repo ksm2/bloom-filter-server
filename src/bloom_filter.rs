@@ -1,6 +1,7 @@
 use std::sync::{Arc, Mutex};
-use murmur3::murmur3_32;
+
 use bit_vec::BitVec;
+use murmur3::murmur3_32;
 use rayon::prelude::*;
 
 // Number of hashes
@@ -25,18 +26,33 @@ impl BloomFilter {
 
     /// Adds many new elements to the Bloom filter.
     pub fn add(&mut self, elements: Vec<&[u8]>) -> () {
-        elements.par_iter()
-            .flat_map(hash_element)
-            .for_each(|hash: usize| {
-                let cv = self.cv.clone();
-                let mut cv = cv.lock().unwrap();
-                if cv[hash] == 0 {
-                    let bv = self.bv.clone();
-                    let mut bv = bv.lock().unwrap();
-                    bv.set(hash, true);
-                }
-                cv[hash] += 1;
-            });
+        match elements.len() {
+            1 => {
+                self.add_one(elements[0])
+            }
+            _ => {
+                elements.par_iter()
+                    .flat_map(hash_vec)
+                    .for_each(|hash: usize| {
+                        let mut cv = self.cv.lock().unwrap();
+                        if cv[hash] == 0 {
+                            let mut bv = self.bv.lock().unwrap();
+                            bv.set(hash, true);
+                        }
+                        cv[hash] += 1;
+                    })
+            }
+        }
+    }
+
+    /// Adds one new element to the Bloom filter.
+    pub fn add_one(&mut self, element: &[u8]) -> () {
+        let hashes = hash(&element);
+        for hash in hashes.iter() {
+            let mut arc = self.cv.lock().unwrap();
+            arc[*hash] += 1;
+            self.bv.lock().unwrap().set(*hash, true);
+        }
     }
 
     /// Removes an element from the Bloom filter.
@@ -44,7 +60,7 @@ impl BloomFilter {
     /// Returns `true`, if element is not contained afterwards.
     pub fn remove(&mut self, element: &[u8]) -> bool {
         if !self.has(element) {
-            return true
+            return true;
         }
 
         let mut result = false;
@@ -82,8 +98,8 @@ impl BloomFilter {
 }
 
 /// Hashes the given element string
-pub fn hash(element: &&[u8]) -> [usize; K] {
-    let mut b = *element;
+pub fn hash(element: &[u8]) -> [usize; K] {
+    let mut b = element;
     let hash1 = murmur3_32(&mut b, 0) as usize;
     let hash2 = murmur3_32(&mut b, hash1 as u32) as usize;
     let mut hashes = [0usize; K];
@@ -94,29 +110,14 @@ pub fn hash(element: &&[u8]) -> [usize; K] {
 }
 
 /// Hashes the given element string
-#[cfg(test)]
-pub fn hash_vec(element: &[u8]) -> Vec<usize> {
-    hash(&element).to_vec()
-}
-
-pub fn make_hash_vec(hash1: usize, hash2: usize) -> Vec<usize> {
-    let mut hashes = [0usize; K];
-    for k in 0..K {
-        hashes[k] = (hash1 + k * hash2) % M;
-    }
-    hashes.to_vec()
-}
-
-fn hash_element(e: &&[u8]) -> Vec<usize> {
-    let mut b = *e;
-    let h1 = murmur3_32(&mut b, 0);
-    make_hash_vec(h1 as usize, murmur3_32(&mut b, h1) as usize)
+pub fn hash_vec(element: &&[u8]) -> Vec<usize> {
+    hash(*element).to_vec()
 }
 
 /// Hashes the given elements strings
 #[cfg(test)]
 pub fn hash_many(elements: Vec<&[u8]>) -> Vec<usize> {
     elements.par_iter()
-        .flat_map(hash_element)
+        .flat_map(hash_vec)
         .collect::<Vec<usize>>()
 }

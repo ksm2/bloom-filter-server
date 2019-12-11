@@ -26,11 +26,7 @@ impl BloomFilter {
     /// Adds many new elements to the Bloom filter.
     pub fn add(&mut self, elements: Vec<&[u8]>) -> () {
         elements.par_iter()
-            .flat_map(|e: &&[u8]| {
-                let mut b = *e;
-                let h1 = murmur3_32(&mut b, 0);
-                make_hash_vec(h1 as usize, murmur3_32(&mut b, h1) as usize)
-            })
+            .flat_map(hash_element)
             .for_each(|hash: usize| {
                 let cv = self.cv.clone();
                 let mut cv = cv.lock().unwrap();
@@ -111,14 +107,16 @@ pub fn make_hash_vec(hash1: usize, hash2: usize) -> Vec<usize> {
     hashes.to_vec()
 }
 
+fn hash_element(e: &&[u8]) -> Vec<usize> {
+    let mut b = *e;
+    let h1 = murmur3_32(&mut b, 0);
+    make_hash_vec(h1 as usize, murmur3_32(&mut b, h1) as usize)
+}
+
 /// Hashes the given elements strings
 #[cfg(test)]
 pub fn hash_many(elements: Vec<&[u8]>) -> Vec<usize> {
     elements.par_iter()
-        .flat_map(|e: &&[u8]| {
-            let mut b = *e;
-            let h1 = murmur3_32(&mut b, 0);
-            make_hash_vec(h1 as usize, murmur3_32(&mut b, h1) as usize)
-        })
+        .flat_map(hash_element)
         .collect::<Vec<usize>>()
 }

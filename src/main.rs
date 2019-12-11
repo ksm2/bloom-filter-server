@@ -13,7 +13,6 @@ use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::mpsc::{channel, Sender, Receiver};
 use std::thread;
-use std::time::Duration;
 use std::option::NoneError;
 
 // Define Modules
@@ -36,7 +35,7 @@ fn main() {
     let mut i = 0;
     for stream in listener.incoming() {
         match stream {
-            Ok(mut stream) => {
+            Ok(stream) => {
                 let cloned_tx = parent_tx.clone();
                 i += 1;
                 let my_id = i;
@@ -66,8 +65,6 @@ fn handle_client(id: i32, parent_tx: Sender<([u8; 4096], Sender<Vec<u8>>)>, mut 
         parent_tx.send((buf, child_tx)).unwrap();
         let to_send = parent_rx.recv().unwrap();
         stream.write(to_send.as_slice()).unwrap();
-
-        thread::sleep(Duration::from_millis(1))
     }
 
     println!("Closed connection to client #{}", id);
@@ -77,7 +74,7 @@ fn handle_client(id: i32, parent_tx: Sender<([u8; 4096], Sender<Vec<u8>>)>, mut 
 fn handle_server(rx: Receiver<([u8; 4096], Sender<Vec<u8>>)>) {
     let mut bf = BloomFilter::new();
 
-    for (mut message, tx) in rx.iter() {
+    for (message, tx) in rx.iter() {
         match handle_message(&mut bf, message) {
             Ok(to_send) => tx.send(to_send).unwrap(),
             Err(_) => tx.send(b"ERROR. Unkown error.".to_vec()).unwrap(),
@@ -164,7 +161,7 @@ fn handle_message(bf: &mut BloomFilter, message: [u8; 4096]) -> Result<Vec<u8>, 
         }
         _ => {
             println!("Error with incoming message.");
-            Ok(format!("ERROR. Invalid command {}.\n", String::from_utf8_lossy(command).trim_right()).as_bytes().to_vec())
+            Ok(format!("ERROR. Invalid command {}.\n", String::from_utf8_lossy(command).trim_end()).as_bytes().to_vec())
         }
     }
 }

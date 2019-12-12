@@ -1,5 +1,4 @@
 #![feature(test)]
-#![feature(try_trait)]
 
 extern crate bit_vec;
 extern crate murmur3;
@@ -8,7 +7,6 @@ extern crate test;
 
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::option::NoneError;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread;
 
@@ -73,9 +71,14 @@ fn handle_server(rx: Receiver<([u8; 4096], Sender<Vec<u8>>)>) {
     let mut bf = BloomFilter::new();
 
     for (message, tx) in rx.iter() {
+        let mut prefix = "ERROR. ".to_owned();
         match handle_message(&mut bf, message) {
             Ok(to_send) => tx.send(to_send).unwrap(),
-            Err(_) => tx.send(b"ERROR. Unkown error.".to_vec()).unwrap(),
+            Err(err) => {
+                prefix.push_str(err);
+                prefix.push('\n');
+                tx.send(prefix.into_bytes()).unwrap()
+            },
         }
     }
 }
@@ -92,27 +95,30 @@ impl IsWhitespace for u8 {
 
 
 trait SplitWhitespace {
-    fn split_whitespace(&self) -> Result<Vec<&[u8]>, std::option::NoneError>;
+    fn split_whitespace(&self) -> Result<Vec<&[u8]>, &'static str>;
 }
 
 impl SplitWhitespace for [u8] {
     /// Splits the byte array into chunks on whitespace.
-    fn split_whitespace(&self) -> Result<Vec<&[u8]>, std::option::NoneError> {
+    fn split_whitespace(&self) -> Result<Vec<&[u8]>, &'static str> {
         let mut start = 0;
         let mut vec = Vec::new();
         let mut i = 0;
         while i < self.len() {
-            if self[i] == 0 {
-                return Ok(vec);
-            }
-
-            if self[i].is_whitespace() {
-                vec.push(self.get(start..i)?);
-                i += 1;
-                while i < self.len() - 1 && self[i + 1].is_whitespace() {
-                    i += 1;
+            let eof = self[i] == 0;
+            if eof || self[i].is_whitespace() {
+                if i > start {
+                    match self.get(start..i) {
+                        Some(element) => vec.push(element),
+                        None => return Err("Could not get next element."),
+                    };
                 }
-                start = i;
+
+                if eof {
+                    return Ok(vec);
+                } else {
+                    start = i + 1;
+                }
             }
 
             i += 1;
@@ -122,13 +128,25 @@ impl SplitWhitespace for [u8] {
 }
 
 /// Handles an incoming message.
-fn handle_message(bf: &mut BloomFilter, message: [u8; 4096]) -> Result<Vec<u8>, NoneError> {
-    let command: &[u8] = message.get(0..3)?;
-    let rest: &[u8] = message.get(4..)?;
+fn handle_message(bf: &mut BloomFilter, message: [u8; 4096]) -> Result<Vec<u8>, &'static str> {
+    let command: &[u8] = match message.get(0..3) {
+        Some(x) => x,
+        None => return Err("Could not get command."),
+    };
+
+    let rest: &[u8] = match message.get(4..) {
+        Some(x) => x,
+        None => return Err("Could not get argument."),
+    };
+
     let tokens = rest.split_whitespace()?;
 
     match command {
         b"ADD" | b"add" => {
+            if tokens.len() == 0 {
+                return Err("Specify at least one element.");
+            }
+            println!("Added {} element(s)", tokens.len());
             bf.add(tokens);
             Ok(b"OK.\n".to_vec())
         }
@@ -140,7 +158,10 @@ fn handle_message(bf: &mut BloomFilter, message: [u8; 4096]) -> Result<Vec<u8>, 
             Ok(b"OK.\n".to_vec())
         }
         b"HAS" | b"has" => {
-            let token = tokens.iter().next()?;
+            let token = match tokens.iter().next() {
+                Some(t) => t,
+                None => return Err("Could not get token"),
+            };
             let is_contained = bf.has(token);
             println!("Check if '{}' is contained: {}", String::from_utf8_lossy(token).to_string(), is_contained);
             if is_contained {
@@ -150,7 +171,10 @@ fn handle_message(bf: &mut BloomFilter, message: [u8; 4096]) -> Result<Vec<u8>, 
             }
         }
         b"CNT" | b"cnt" => {
-            let token = tokens.iter().next()?;
+            let token = match tokens.iter().next() {
+                Some(t) => t,
+                None => return Err("Could not get token"),
+            };
             let count = bf.count(token);
             Ok(format!("{}.\n", count).into_bytes())
         }
